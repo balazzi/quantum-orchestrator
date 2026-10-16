@@ -1,0 +1,15 @@
+html, body { margin:0; height:100%; overflow:hidden; background:#020610;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+#gl { position:fixed; inset:0; }
+#hud { position:fixed; inset:0; pointer-events:none; color:#bfefff;
+  display:flex; flex-direction:column; justify-content:flex-end; padding:18px; }
+.title { font-size:13px; letter-spacing:4px; color:#7df9ff;
+  text-shadow:0 0 12px #00e5ff; margin-bottom:12px; }
+.grid { display:grid; grid-template-columns:repeat(4, minmax(120px, 1fr));
+  gap:8px; max-width:760px; }
+.card { background:rgba(2,16,32,.55); border:1px solid rgba(0,229,255,.25);
+  border-radius:8px; padding:8px 10px; backdrop-filter: blur(4px); }
+.card span { display:block; font-size:10px; opacity:.65; letter-spacing:1px; }
+.card b { font-size:17px; color:#eaffff; text-shadow:0 0 8px #00e5ff; }
+.foot { margin-top:10px; font-size:10px; letter-spacing:2px; opacity:.6; }
+@media (max-width:640px){ .grid{ grid-template-columns:repeat(2,1fr);} }

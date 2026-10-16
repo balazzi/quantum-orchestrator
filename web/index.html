@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QO-75 // Quantum Orchestrator</title>
+<meta name="theme-color" content="#020610">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="hud">
+  <div class="title">QO-75 // QUANTUM ORCHESTRATOR</div>
+  <div class="grid">
+    <div class="card"><span>agents alive</span><b id="m-agents">–</b></div>
+    <div class="card"><span>queue depth</span><b id="m-queue">–</b></div>
+    <div class="card"><span>avg latency</span><b id="m-lat">–</b></div>
+    <div class="card"><span>qubit fidelity</span><b id="m-fid">–</b></div>
+    <div class="card"><span>decoherence µs</span><b id="m-dec">–</b></div>
+    <div class="card"><span>entanglement/s</span><b id="m-ent">–</b></div>
+    <div class="card"><span>pqc handshakes/s</span><b id="m-pqc">–</b></div>
+    <div class="card"><span>anomalies</span><b id="m-anom">–</b></div>
+  </div>
+  <div class="foot">PQC-READY · ZERO-DEP · SELF-HEALING · <span id="m-up">up 0s</span></div>
+</div>
+<script>
+"use strict";
+// ---------- WebGL2 holographic field ----------
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl2', {antialias: true});
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2); // 4K/8K capable
+  canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+  canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
+  if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize); resize();
+
+let start = performance.now();
+if (gl) {
+  const vs = `#version 300 es
+  in vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }`;
+  const fs = `#version 300 es
+  precision highp float;
+  uniform vec2 u_res; uniform float u_time; out vec4 o;
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+  float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+    return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+  void main(){
+    vec2 uv = (gl_FragCoord.xy - .5*u_res)/u_res.y;
+    float t = u_time*.12;
+    vec2 g = abs(fract(uv*9. + vec2(t,-t)) - .5);
+    float grid = smoothstep(.46,.5,max(g.x,g.y));
+    float n = noise(uv*3. + t*2.);
+    float rings = sin(length(uv)*26. - u_time*1.6)*.5+.5;
+    float glow = exp(-length(uv)*2.4);
+    vec3 col = mix(vec3(.015,.04,.10), vec3(.0,.85,1.), grid*.55);
+    col += vec3(.55,.12,1.)*pow(rings*glow, 2.)*.85;
+    col += vec3(.0,.35,1.)*n*glow*.55;
+    float sweep = smoothstep(.0,.35,abs(fract(uv.y*.5 - u_time*.05)-.5));
+    col += vec3(.0,.8,1.)*sweep*glow*.25;
+    col *= .82 + .18*sin(gl_FragCoord.y*1.4);       // scanlines
+    col *= 1. - dot(uv,uv)*.55;                     // vignette
+    o = vec4(col, 1.);
+  }`;
+  function sh(type, src){ const s=gl.createShader(type); gl.shaderSource(s,src);
+    gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))
+      console.error(gl.getShaderInfoLog(s)); return s; }
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(pr, 'p');
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const uRes = gl.getUniformLocation(pr, 'u_res'), uTime = gl.getUniformLocation(pr, 'u_time');
+  (function frame(){
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uTime, (performance.now()-start)/1000);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  })();
+}
+
+// ---------- HUD: live telemetry ----------
+const $ = id => document.getElementById(id);
+const set = (id, v) => { $(id).textContent = v; };
+async function poll(){
+  try {
+    const [t, s] = await Promise.all([
+      fetch('/api/telemetry').then(r=>r.json()),
+      fetch('/api/swarm').then(r=>r.json()),
+    ]);
+    set('m-agents', s.alive + '/' + s.desired);
+    set('m-queue', s.queue_depth);
+    set('m-lat', (s.avg_latency_s*1000).toFixed(1) + 'ms');
+    const g = n => t[n] ? t[n].last : '–';
+    set('m-fid', g('qubit_fidelity'));
+    set('m-dec', g('decoherence_us'));
+    set('m-ent', g('entanglement_pairs_s'));
+    set('m-pqc', g('pqc_handshakes_s'));
+    set('m-anom', t._meta ? t._meta.anomalies : 0);
+    set('m-up', 'up ' + (t._meta ? t._meta.uptime_s : 0) + 's');
+  } catch(e) { /* offline demo mode: shader keeps running */ }
+}
+setInterval(poll, 1500); poll();
+
+// ---------- PWA ----------
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

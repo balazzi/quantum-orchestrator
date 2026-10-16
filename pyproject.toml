@@ -1,0 +1,12 @@
+[project]
+name = "qo-75"
+version = "0.1.0"
+description = "PQC-ready quantum systems orchestrator: 75-agent swarm, telemetry, self-healing"
+requires-python = ">=3.10"
+dependencies = []          # zero-dependency by design (stdlib only)
+
+[project.optional-dependencies]
+dev = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
